@@ -16,14 +16,57 @@
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
+//SETH
+- (NSMutableDictionary*) createReturnDictionary: (int) returnCode withText:(NSString*) returnText{
+    
+    NSMutableDictionary* returnDictionary = [[NSMutableDictionary alloc] init];
+    
+    [returnDictionary setObject:[NSNumber numberWithInt:returnCode] forKey:@"returnCode"];
+    [returnDictionary setObject:returnText forKey:@"returnText"];
+    
+    return returnDictionary;
+    
+}
+
 - (void)getInstallationId:(CDVInvokedUrlCommand*) command
 {
     [self.commandDelegate runInBackground:^{
-        CDVPluginResult* pluginResult = nil;
+        __block CDVPluginResult* pluginResult = nil;
         PFInstallation *currentInstallation = [PFInstallation currentInstallation];
-        NSString *installationId = currentInstallation.installationId;
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:installationId];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        [currentInstallation saveEventually:^(BOOL succeeded, NSError *error) {
+            if(!error) {
+                //GET TOKEN TO LOGIN JAVASCRIPT
+                if([PFUser currentUser] != nil) {
+                    PFUser *cu = [PFUser currentUser];
+                    NSString *installationId = currentInstallation.installationId;
+                    NSMutableDictionary *returnDictionary = [self createReturnDictionary:0 withText: @"Success"];
+                    [returnDictionary setObject:installationId forKey:@"installationId"];
+                    [returnDictionary setObject:cu.sessionToken forKey:@"token"];
+                    NSLog(@"TOKEN: %@", cu.sessionToken);
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:returnDictionary];
+                    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                    
+                } else {
+                    [PFAnonymousUtils logInWithBlock:^(PFUser *user, NSError *error) {
+                        if (error) {
+                            NSLog(@"Anonymous login failed.");
+                        } else {
+                            NSLog(@"Anonymous user logged in.");
+                            [user saveEventually:^(BOOL succeeded, NSError *error) {
+                                PFUser *cu = [PFUser currentUser];
+                                NSString *installationId = currentInstallation.installationId;
+                                NSMutableDictionary *returnDictionary = [self createReturnDictionary:0 withText: @"Success"];
+                                [returnDictionary setObject:installationId forKey:@"installationId"];
+                                [returnDictionary setObject:cu.sessionToken forKey:@"token"];
+                                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:returnDictionary];
+                                [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+                                
+                            }];
+                        }
+                    }];
+                }
+            }
+        }];
     }];
 }
 
@@ -48,21 +91,10 @@
 - (void)subscribe: (CDVInvokedUrlCommand *)command
 {
     // Not sure if this is necessary
-    if ([[UIApplication sharedApplication] respondsToSelector:@selector(registerUserNotificationSettings:)]) {
-        UIUserNotificationSettings *settings =
-        [UIUserNotificationSettings settingsForTypes:UIUserNotificationTypeAlert |
-                                                     UIUserNotificationTypeBadge |
-                                                     UIUserNotificationTypeSound
-                                          categories:nil];
-        [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
-        [[UIApplication sharedApplication] registerForRemoteNotifications];
-    }
-    else {
-        [[UIApplication sharedApplication] registerForRemoteNotificationTypes:
-            UIRemoteNotificationTypeBadge |
-            UIRemoteNotificationTypeAlert |
-            UIRemoteNotificationTypeSound];
-    }
+    [[UIApplication sharedApplication] registerForRemoteNotificationTypes:
+        UIRemoteNotificationTypeBadge |
+        UIRemoteNotificationTypeAlert |
+        UIRemoteNotificationTypeSound];
 
     CDVPluginResult* pluginResult = nil;
     PFInstallation *currentInstallation = [PFInstallation currentInstallation];
@@ -73,15 +105,27 @@
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
+//SETH
 - (void)unsubscribe: (CDVInvokedUrlCommand *)command
 {
-    CDVPluginResult* pluginResult = nil;
-    PFInstallation *currentInstallation = [PFInstallation currentInstallation];
-    NSString *channel = [command.arguments objectAtIndex:0];
-    [currentInstallation removeObject:channel forKey:@"channels"];
-    [currentInstallation saveInBackground];
-    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+//    CDVPluginResult* pluginResult = nil;
+//    PFInstallation *currentInstallation = [PFInstallation currentInstallation];
+//    NSString *channel = [command.arguments objectAtIndex:0];
+//    [currentInstallation removeObject:channel forKey:@"channels"];
+//    [currentInstallation saveInBackground];
+//    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+//    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+    
+    // Login PFUser using Facebook
+    NSArray *permissionsArray = @[ @"user_about_me", @"user_relationships", @"user_birthday", @"user_location"];
+    [PFFacebookUtils initializeFacebook];
+    [PFFacebookUtils logInWithPermissions:permissionsArray block:^(PFUser *user, NSError *error) {
+         if (!user) {
+             NSLog(@"PF LINK ERROR");
+         } else {
+             NSLog(@"PF LINK SUCCESS");
+         }
+    }];
 }
 
 @end
